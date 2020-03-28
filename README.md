@@ -24,7 +24,7 @@ The Sim800 code provided by Espressif is good enough for amatuer projects but it
 | GPIO26 | RX             |
 | GPIO27 | TX             |
 | GND    | GND            |
-| GPIO23 | VCC            |** 
+| GPIO23 | VCC      **    |
 ! GPIO4  | PWKEY          |
 ! GPIO5  ! RST            |
 **This only is need of TTGO-CALL board. For other boards you can connect direct to VCC**
