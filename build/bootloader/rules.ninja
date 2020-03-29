@@ -204,7 +204,7 @@ rule C_STATIC_LIBRARY_LINKER____idf_main
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = C:\espressif\tools\cmake\3.13.4\bin\cmake.exe -SC:\esp-idf-4-0\components\bootloader\subproject -BC:\pppos_client\build\bootloader
+  command = C:\espressif\tools\cmake\3.13.4\bin\cmake.exe -SC:\esp-idf-4-0\components\bootloader\subproject -BC:\sim800_at_term\build\bootloader
   description = Re-running CMake...
   generator = 1
 

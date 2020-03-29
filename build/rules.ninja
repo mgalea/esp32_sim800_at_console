@@ -6,15 +6,15 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: modem_console
-# Configuration: 
+# Project: modem_terminal
+# Configuration: Debug
 # =============================================================================
 # =============================================================================
 
 #############################################
 # Rule for compiling C files.
 
-rule C_COMPILER__modem_console.2eelf
+rule C_COMPILER__modem_terminal.2eelf
   depfile = $DEP_FILE
   deps = gcc
   command = C:\espressif\tools\xtensa-esp32-elf\esp-2019r2-8.2.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-gcc.exe $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
@@ -24,7 +24,7 @@ rule C_COMPILER__modem_console.2eelf
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_LINKER__modem_console.2eelf
+rule CXX_EXECUTABLE_LINKER__modem_terminal.2eelf
   command = cmd.exe /C "$PRE_LINK && C:\espressif\tools\xtensa-esp32-elf\esp-2019r2-8.2.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-g++.exe  $FLAGS  $LINK_FLAGS @$RSP_FILE  -o $TARGET_FILE  && $POST_BUILD"
   description = Linking CXX executable $TARGET_FILE
   rspfile = $RSP_FILE
@@ -1285,7 +1285,7 @@ rule CXX_STATIC_LIBRARY_LINKER____idf_modem
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = C:\espressif\tools\cmake\3.13.4\bin\cmake.exe -SC:\pppos_client -BC:\pppos_client\build
+  command = C:\espressif\tools\cmake\3.13.4\bin\cmake.exe -SC:\sim800_at_term -Bc:\sim800_at_term\build
   description = Re-running CMake...
   generator = 1
 

@@ -2,17 +2,19 @@
 
 
 ## Overview
-This is a terminal-broker application using an ESP32 as Data Termional Equipment (DTE) connected to a SIM800 GPRS modem (DCE). The ESP32 provides the console functionaity and fetures to connect to any terminal application using UART0 on the ESP32.
+This is a terminal/broker application using an ESP32 as Data Terminal Equipment (DTE) connected to a SIM800 GPRS modem (DCE). The ESP32 provides a console functionaity to connect to any terminal application using UART0.
 
-The application is an adaptation of two ESP32-IDF example applications 1) The ESP console component and 2) modem/mqtt component. I also used a snippet of code by David Mitzek for the cloudMyCar project with regards to the SIM800 odd behaviour.
+The application is an adaptation of two ESP32-IDF SDK example applications 1) The ESP console component and 2) modem/mqtt component. I also used a snippet of code by David Mitzek for the cloudMyCar project with regards to the SIM800 odd behaviour.
 
 The application sends all AT commands and prints their response. There are two commands `poweron` and `poweroff` that switch on and off the modem respectively.
 
 ## Why did I developed this Application
-The Sim800 code provided by Espressif is good enough for amatuer projects but its not good for industrial  projects. There is a lot missing especially on capturing URC (Unsolisited Response Codes) in order to establish tyhe modem's state. I needed to experiment and see what was happening between the SIM800 and the ESP32. This app gave be the chance to send commands and see results in real time. As I progressed I inserted the URCs into the sim800 code so the component in this project is not compliant with the found in the ESP-IDF SDK.
+The Sim800 code provided by Espressif is good enough for amatuer projects but its not good for industrial  projects. There is a lot missing especially araound capturing URC (Unsolisited Response Codes) in order to establish the modem's state. I needed to experiment and see what was happening between the SIM800 and the ESP32. This app gave be the chance to send commands and see results in real time. 
+
+As I progressed I included new features and functionality to sim800 code in the esp-modem component so this particular component is not any more compliant with the standard one found in the ESP-IDF SDK.
 
 ## Harware Required
-1) Any ESP32 based board with UART0 connect to a PC or Terminal and UART1 connected to
+1) Any ESP32 based board with UART0 connected to a PC or Terminal and UART1 connected to
 2) SIM_COMM 800 series GPRS modem. There is also code for BG96 whihc should work out of the box but have not been tested.
 
 #### Pin Assignment

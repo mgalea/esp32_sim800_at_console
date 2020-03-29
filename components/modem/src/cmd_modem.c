@@ -183,9 +183,9 @@ static int initialize_modem()
 static void register_start_modem()
 {
     const esp_console_cmd_t cmd = {
-        .command = "modemon",
+        .command = "poweron",
         .help = "Start and Initialize the modem (DCE)",
-        .hint = "This console uses the SIM800 GPRS modem. Refer to the AT Commands manual.",
+        .hint = "no arguments",
         .func = &initialize_modem,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
@@ -202,7 +202,7 @@ static void register_get_operator()
     const esp_console_cmd_t cmd = {
         .command = "operator",
         .help = "Get Network Operator Name",
-        .hint = "This console uses the SIM800 GPRS modem. Refer to the AT Commands manual.",
+        .hint = "no arguments",
         .func = &get_operator,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
@@ -223,9 +223,9 @@ int de_initialize_modem()
 static void register_stop_modem()
 {
     const esp_console_cmd_t cmd = {
-        .command = "modemoff",
+        .command = "poweroff",
         .help = "Stop the modem (DCE)",
-        .hint = NULL,
+        .hint = "no aguments",
         .func = &de_initialize_modem,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
@@ -260,7 +260,7 @@ static void register_at_command()
     const esp_console_cmd_t cmd = {
         .command = "AT",
         .help = "the Hayes modem AT command",
-        .hint = NULL,
+        .hint = "no spaces between commands.",
         .func = &at_command,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));

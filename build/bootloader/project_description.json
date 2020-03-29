@@ -1,12 +1,12 @@
 {
     "project_name":       "bootloader",
     "project_path":       "C:/esp-idf-4-0/components/bootloader/subproject",
-    "build_dir":          "C:/pppos_client/build/bootloader",
-    "config_file":        "C:/pppos_client/sdkconfig",
+    "build_dir":          "C:/sim800_at_term/build/bootloader",
+    "config_file":        "C:/sim800_at_term/sdkconfig",
     "config_defaults":    "",
     "app_elf":            "bootloader.elf",
     "app_bin":            "bootloader.bin",
-    "git_revision":       "v4.0-dirty",
+    "git_revision":       "v4.0-beta2-303-gb0d6c01b0",
     "phy_data_partition": "",
     "monitor_baud" : "115200",
     "config_environment" : {
