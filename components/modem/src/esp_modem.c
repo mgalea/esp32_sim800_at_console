@@ -25,8 +25,8 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 
-#define ESP_MODEM_LINE_BUFFER_SIZE (CONFIG_EXAMPLE_UART_RX_BUFFER_SIZE)
-#define ESP_MODEM_EVENT_QUEUE_SIZE (16)
+#define ESP_MODEM_LINE_BUFFER_SIZE (256)
+#define ESP_MODEM_EVENT_QUEUE_SIZE (32)
 
 #define MIN_PATTERN_INTERVAL (10000)
 #define MIN_POST_IDLE (10)
@@ -53,7 +53,8 @@ ESP_EVENT_DEFINE_BASE(ESP_MODEM_EVENT);
  * @brief ESP32 Modem DTE
  *
  */
-typedef struct {
+typedef struct
+{
     uart_port_t uart_port;                  /*!< UART port */
     uint8_t *buffer;                        /*!< Internal buffer to store response lines/data from DCE */
     QueueHandle_t event_queue;              /*!< UART event queue handle */
@@ -79,9 +80,13 @@ static esp_err_t esp_dte_handle_line(esp_modem_dte_t *esp_dte)
     MODEM_CHECK(dce, "DTE has not yet bind with DCE", err);
     const char *line = (const char *)(esp_dte->buffer);
     /* Skip pure "\r\n" lines */
-    if (strlen(line) > 2) {
-        MODEM_CHECK(dce->handle_line, "no handler for line", err_handle); 
-        MODEM_CHECK(dce->handle_line(dce, line) == ESP_OK, "handle line failed", err_handle);
+    if (strlen(line) > 2)
+    {
+        MODEM_CHECK(dce->handle_line, "no handler for line. Trying default.", handle_line_default);
+        MODEM_CHECK(dce->handle_line(dce, line) == ESP_OK, "handle line failed", handle_line_default);
+        return ESP_OK;
+    handle_line_default:
+        MODEM_CHECK(dce->handle_line_default(dce, line) == ESP_OK, "default handle line failed", err_handle);
     }
     return ESP_OK;
 err_handle:
@@ -101,24 +106,33 @@ static void esp_handle_uart_pattern(esp_modem_dte_t *esp_dte)
 {
     int pos = uart_pattern_pop_pos(esp_dte->uart_port);
     int read_len = 0;
-    if (pos != -1) {
-        if (pos < ESP_MODEM_LINE_BUFFER_SIZE - 1) {
+    if (pos != -1)
+    {
+        if (pos < ESP_MODEM_LINE_BUFFER_SIZE - 1)
+        {
             /* read one line(include '\n') */
             read_len = pos + 1;
-        } else {
+        }
+        else
+        {
             ESP_LOGW(MODEM_TAG, "ESP Modem Line buffer too small");
             read_len = ESP_MODEM_LINE_BUFFER_SIZE - 1;
         }
-        read_len = uart_read_bytes(esp_dte->uart_port, esp_dte->buffer, read_len, pdMS_TO_TICKS(100));
-        if (read_len) {
+        read_len = uart_read_bytes(esp_dte->uart_port, esp_dte->buffer, read_len, pdMS_TO_TICKS(400));
+        if (read_len)
+        {
             /* make sure the line is a standard string */
             esp_dte->buffer[read_len] = '\0';
             /* Send new line to handle */
             esp_dte_handle_line(esp_dte);
-        } else {
+        }
+        else
+        {
             ESP_LOGE(MODEM_TAG, "uart read bytes failed");
         }
-    } else {
+    }
+    else
+    {
         ESP_LOGW(MODEM_TAG, "Pattern Queue Size too small");
         uart_flush(esp_dte->uart_port);
     }
@@ -133,15 +147,56 @@ static void esp_handle_uart_data(esp_modem_dte_t *esp_dte)
 {
     modem_dce_t *dce = esp_dte->parent.dce;
     MODEM_CHECK(dce, "DTE has not yet bind with DCE", err);
-    size_t length = 0;
+    size_t length;
     uart_get_buffered_data_len(esp_dte->uart_port, &length);
     length = MIN(ESP_MODEM_LINE_BUFFER_SIZE, length);
     length = uart_read_bytes(esp_dte->uart_port, esp_dte->buffer, length, portMAX_DELAY);
-    /* pass input data to the lwIP core thread */
-    if (length && dce->mode==MODEM_PPP_MODE) {
-            pppos_input_tcpip(esp_dte->ppp, esp_dte->buffer, length);
+
+    /*pass input data to the lwIP core thread */
+
+    if (length > 2)
+    {
+
+        pppos_input_tcpip(esp_dte->ppp, esp_dte->buffer, length);
     }
-    err:
+err:
+    return;
+}
+
+static void esp_handle_uart_at_response(esp_modem_dte_t *esp_dte)
+{
+    modem_dce_t *dce = esp_dte->parent.dce;
+    MODEM_CHECK(dce, "DTE has not yet bind with DCE", err);
+    size_t res;
+    uart_get_buffered_data_len(esp_dte->uart_port, &res);
+    res = MIN(ESP_MODEM_LINE_BUFFER_SIZE, res);
+    res = uart_read_bytes(esp_dte->uart_port, esp_dte->buffer, res, portMAX_DELAY);
+    uint8_t *buffer = esp_dte->buffer;
+    /*
+    modem_dce_t *dce = esp_dte->parent.dce;
+    uint8_t *buffer = calloc(20000, sizeof(uint8_t));
+    int res = uart_read_bytes(esp_dte->uart_port, buffer, 20000, pdMS_TO_TICKS(50));
+*/
+    if (res > 2)
+    {
+        *(esp_dte->buffer + res) = '\0';
+        printf("%s", esp_dte->buffer);
+        if (strncmp((char *)esp_dte->buffer, MODEM_RESULT_CODE_ERROR, res) == 0)
+        {
+            dce->state = MODEM_STATE_FAIL;
+            xSemaphoreGive(dce->atcmdHandle);
+        }
+        if (strncmp((char *)esp_dte->buffer, MODEM_RESULT_CODE_SUCCESS, res) == 0)
+        {
+
+            dce->state = MODEM_STATE_SUCCESS;
+            xSemaphoreGive(dce->atcmdHandle);
+        }
+    }
+
+    //free(buffer);
+
+err:
     return;
 }
 
@@ -154,11 +209,22 @@ static void uart_event_task_entry(void *param)
 {
     esp_modem_dte_t *esp_dte = (esp_modem_dte_t *)param;
     uart_event_t event;
-    while (1) {
-        if (xQueueReceive(esp_dte->event_queue, &event, pdMS_TO_TICKS(100))) {
-            switch (event.type) {
+    while (1)
+    {
+        if (xQueueReceive(esp_dte->event_queue, &event, pdMS_TO_TICKS(5)))
+        {
+            switch (event.type)
+            {
             case UART_DATA:
-                esp_handle_uart_data(esp_dte);
+                if (esp_dte->parent.dce->mode == MODEM_PPP_MODE)
+                {
+                    esp_handle_uart_data(esp_dte);
+                }
+                else
+                {
+                    esp_handle_uart_at_response(esp_dte);
+                }
+
                 break;
             case UART_FIFO_OVF:
                 ESP_LOGW(MODEM_TAG, "HW FIFO Overflow");
@@ -188,14 +254,14 @@ static void uart_event_task_entry(void *param)
             }
         }
         /* Drive the event loop */
-        esp_event_loop_run(esp_dte->event_loop_hdl, pdMS_TO_TICKS(50));
+        esp_event_loop_run(esp_dte->event_loop_hdl, pdMS_TO_TICKS(25));
     }
     vTaskDelete(NULL);
 }
 
 /**
  * @brief Send command to DCE
- *
+ * @brief CHANGED BY MG
  * @param dte Modem DTE object
  * @param command command string
  * @param timeout timeout value, unit: ms
@@ -219,7 +285,7 @@ static esp_err_t esp_modem_dte_send_cmd(modem_dte_t *dte, const char *command, u
     MODEM_CHECK(xSemaphoreTake(esp_dte->process_sem, pdMS_TO_TICKS(timeout)) == pdTRUE, "process command timeout", err);
     ret = ESP_OK;
 err:
-    dce->handle_line = NULL;
+    dce->handle_line = dce->handle_line_default; //@change CHANGED BY MG
     return ret;
 }
 
@@ -253,7 +319,7 @@ err:
  *      ESP_FAIL on error
  */
 static esp_err_t esp_modem_dte_send_wait(modem_dte_t *dte, const char *data, uint32_t length,
-        const char *prompt, uint32_t timeout)
+                                         const char *prompt, uint32_t timeout)
 {
     MODEM_CHECK(data, "data is NULL", err_param);
     MODEM_CHECK(prompt, "prompt is NULL", err_param);
@@ -279,6 +345,35 @@ err_param:
 }
 
 /**
+ * @brief Send at command and wait for full response from DCE
+ *
+ * @param dte Modem DTE object
+ * @param data command buffer
+ * @param timeout timeout value (unit: ms)
+ * @return esp_err_t
+ *      ESP_OK on success
+ *      ESP_FAIL on error
+ */
+static esp_err_t esp_modem_dte_send_at(modem_dte_t *dte, const char *data, uint32_t timeout)
+{
+    MODEM_CHECK(data, "data is NULL", err_param);
+    esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
+    modem_dce_t *dce = dte->dce;
+    dce->state = MODEM_STATE_PROCESSING;
+    // We'd better disable pattern detection here for a moment in case prompt string contains the pattern character
+    uart_disable_pattern_det_intr(esp_dte->uart_port);
+    MODEM_CHECK(uart_write_bytes(esp_dte->uart_port, data, strlen(data)) >= 0, "uart write bytes failed", err_write);
+    xSemaphoreTake(dce->atcmdHandle, portMAX_DELAY);
+    vTaskDelay(10);
+    uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
+    return ESP_OK;
+err_write:
+    uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
+err_param:
+    return ESP_FAIL;
+}
+
+/**
  * @brief Change Modem's working mode
  *
  * @param dte Modem DTE object
@@ -293,7 +388,8 @@ static esp_err_t esp_modem_dte_change_mode(modem_dte_t *dte, modem_mode_t new_mo
     MODEM_CHECK(dce, "DTE has not yet bind with DCE", err);
     esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
     MODEM_CHECK(dce->mode != new_mode, "already in mode: %d", err, new_mode);
-    switch (new_mode) {
+    switch (new_mode)
+    {
     case MODEM_PPP_MODE:
         MODEM_CHECK(dce->set_working_mode(dce, new_mode) == ESP_OK, "set new working mode:%d failed", err, new_mode);
         uart_disable_pattern_det_intr(esp_dte->uart_port);
@@ -303,7 +399,7 @@ static esp_err_t esp_modem_dte_change_mode(modem_dte_t *dte, modem_mode_t new_mo
         uart_disable_rx_intr(esp_dte->uart_port);
         uart_flush(esp_dte->uart_port);
         uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
-        uart_pattern_queue_reset(esp_dte->uart_port, CONFIG_EXAMPLE_UART_PATTERN_QUEUE_SIZE);
+        uart_pattern_queue_reset(esp_dte->uart_port, CONFIG_EXAMPLE_UART_PATTERN_QUEUE_SIZE + 6);
         MODEM_CHECK(dce->set_working_mode(dce, new_mode) == ESP_OK, "set new working mode:%d failed", err, new_mode);
         break;
     default:
@@ -341,7 +437,8 @@ static esp_err_t esp_modem_dte_deinit(modem_dte_t *dte)
     uart_driver_delete(esp_dte->uart_port);
     /* Free memory */
     free(esp_dte->buffer);
-    if (dte->dce) {
+    if (dte->dce)
+    {
         dte->dce->dte = NULL;
     }
     free(esp_dte);
@@ -350,6 +447,7 @@ static esp_err_t esp_modem_dte_deinit(modem_dte_t *dte)
 
 modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
 {
+    printf("DTE");
     esp_err_t res;
     /* malloc memory for esp_dte object */
     esp_modem_dte_t *esp_dte = calloc(1, sizeof(esp_modem_dte_t));
@@ -364,6 +462,7 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
     esp_dte->parent.send_cmd = esp_modem_dte_send_cmd;
     esp_dte->parent.send_data = esp_modem_dte_send_data;
     esp_dte->parent.send_wait = esp_modem_dte_send_wait;
+    esp_dte->parent.send_at = esp_modem_dte_send_at;
     esp_dte->parent.change_mode = esp_modem_dte_change_mode;
     esp_dte->parent.process_cmd_done = esp_modem_dte_process_cmd_done;
     esp_dte->parent.deinit = esp_modem_dte_deinit;
@@ -373,21 +472,26 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
         .data_bits = config->data_bits,
         .parity = config->parity,
         .stop_bits = config->stop_bits,
-        .flow_ctrl = (config->flow_control == MODEM_FLOW_CONTROL_HW) ? UART_HW_FLOWCTRL_CTS_RTS : UART_HW_FLOWCTRL_DISABLE
-    };
+        .flow_ctrl = (config->flow_control == MODEM_FLOW_CONTROL_HW) ? UART_HW_FLOWCTRL_CTS_RTS : UART_HW_FLOWCTRL_DISABLE};
     MODEM_CHECK(uart_param_config(esp_dte->uart_port, &uart_config) == ESP_OK, "config uart parameter failed", err_uart_config);
-    if (config->flow_control == MODEM_FLOW_CONTROL_HW) {
+    if (config->flow_control == MODEM_FLOW_CONTROL_HW)
+    {
         res = uart_set_pin(esp_dte->uart_port, CONFIG_EXAMPLE_UART_MODEM_TX_PIN, CONFIG_EXAMPLE_UART_MODEM_RX_PIN,
                            CONFIG_EXAMPLE_UART_MODEM_RTS_PIN, CONFIG_EXAMPLE_UART_MODEM_CTS_PIN);
-    } else {
+    }
+    else
+    {
         res = uart_set_pin(esp_dte->uart_port, CONFIG_EXAMPLE_UART_MODEM_TX_PIN, CONFIG_EXAMPLE_UART_MODEM_RX_PIN,
                            UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     }
     MODEM_CHECK(res == ESP_OK, "config uart gpio failed", err_uart_config);
     /* Set flow control threshold */
-    if (config->flow_control == MODEM_FLOW_CONTROL_HW) {
+    if (config->flow_control == MODEM_FLOW_CONTROL_HW)
+    {
         res = uart_set_hw_flow_ctrl(esp_dte->uart_port, UART_HW_FLOWCTRL_CTS_RTS, UART_FIFO_LEN - 8);
-    } else if (config->flow_control == MODEM_FLOW_CONTROL_SW) {
+    }
+    else if (config->flow_control == MODEM_FLOW_CONTROL_SW)
+    {
         res = uart_set_sw_flow_ctrl(esp_dte->uart_port, true, 8, UART_FIFO_LEN - 8);
     }
     MODEM_CHECK(res == ESP_OK, "config uart flow control failed", err_uart_config);
@@ -398,26 +502,26 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
     /* Set pattern interrupt, used to detect the end of a line. */
     res = uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
     /* Set pattern queue size */
-    res |= uart_pattern_queue_reset(esp_dte->uart_port, CONFIG_EXAMPLE_UART_PATTERN_QUEUE_SIZE);
+    res |= uart_pattern_queue_reset(esp_dte->uart_port, CONFIG_EXAMPLE_UART_PATTERN_QUEUE_SIZE * 2);
     MODEM_CHECK(res == ESP_OK, "config uart pattern failed", err_uart_pattern);
     /* Create Event loop */
     esp_event_loop_args_t loop_args = {
         .queue_size = ESP_MODEM_EVENT_QUEUE_SIZE,
-        .task_name = NULL
-    };
+        .task_name = NULL};
     MODEM_CHECK(esp_event_loop_create(&loop_args, &esp_dte->event_loop_hdl) == ESP_OK, "create event loop failed", err_eloop);
     /* Create semaphore */
     esp_dte->process_sem = xSemaphoreCreateBinary();
     MODEM_CHECK(esp_dte->process_sem, "create process semaphore failed", err_sem);
     /* Create UART Event task */
-    BaseType_t ret = xTaskCreate(uart_event_task_entry,             //Task Entry
-                                 "uart_event",                      //Task Name
+    BaseType_t ret = xTaskCreate(uart_event_task_entry,                     //Task Entry
+                                 "uart_event",                              //Task Name
                                  CONFIG_EXAMPLE_UART_EVENT_TASK_STACK_SIZE, //Task Stack Size(Bytes)
-                                 esp_dte,                           //Task Parameter
+                                 esp_dte,                                   //Task Parameter
                                  CONFIG_EXAMPLE_UART_EVENT_TASK_PRIORITY,   //Task Priority
-                                 & (esp_dte->uart_event_task_hdl)   //Task Handler
-                                );
+                                 &(esp_dte->uart_event_task_hdl)            //Task Handler
+    );
     MODEM_CHECK(ret == pdTRUE, "create uart event task failed", err_tsk_create);
+
     return &(esp_dte->parent);
     /* Error handling */
 err_tsk_create:
@@ -462,18 +566,21 @@ static void on_ppp_status_changed(ppp_pcb *pcb, int err_code, void *ctx)
     modem_dte_t *dte = (modem_dte_t *)(ctx);
     esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
     ppp_client_ip_info_t ipinfo = {0};
-    switch (err_code) {
+    switch (err_code)
+    {
     case PPPERR_NONE: /* Connected */
         ipinfo.ip = pppif->ip_addr.u_addr.ip4;
         ipinfo.gw = pppif->gw.u_addr.ip4;
         ipinfo.netmask = pppif->netmask.u_addr.ip4;
         dest_ip = dns_getserver(0);
-        if(dest_ip != NULL){
-          ipinfo.ns1 = (*dest_ip).u_addr.ip4;
+        if (dest_ip != NULL)
+        {
+            ipinfo.ns1 = (*dest_ip).u_addr.ip4;
         }
         dest_ip = dns_getserver(1);
-        if(dest_ip != NULL){
-          ipinfo.ns2 = (*dest_ip).u_addr.ip4;
+        if (dest_ip != NULL)
+        {
+            ipinfo.ns2 = (*dest_ip).u_addr.ip4;
         }
         esp_event_post_to(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, MODEM_EVENT_PPP_CONNECT, &ipinfo, sizeof(ipinfo), 0);
         break;
@@ -531,7 +638,8 @@ static void on_ppp_status_changed(ppp_pcb *pcb, int err_code, void *ctx)
  */
 static void on_ppp_notify_phase(ppp_pcb *pcb, u8_t phase, void *ctx)
 {
-    switch (phase) {
+    switch (phase)
+    {
     case PPP_PHASE_DEAD:
         ESP_LOGD(MODEM_TAG, "Phase Dead");
         break;

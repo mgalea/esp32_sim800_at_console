@@ -64,7 +64,7 @@ typedef struct {
         .stop_bits = UART_STOP_BITS_1,          \
         .parity = UART_PARITY_DISABLE,          \
         .baud_rate = 115200,                    \
-        .flow_control = MODEM_FLOW_CONTROL_NONE \
+        .flow_control = MODEM_FLOW_CONTROL_NONE  \
     }
 
 /**

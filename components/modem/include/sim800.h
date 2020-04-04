@@ -27,9 +27,9 @@ typedef enum {
 } modem_connect_state_t;
 
 typedef enum {
-    MODEM_UNKNOWN=0, /*!< In processing */
-    MODEM_READY,    
-} modem_ready_state_t;
+    UNKNOWN=0, /*!< In processing */
+    DCE_READY,    
+} modem_status_t;
 
 
 /**
@@ -40,7 +40,7 @@ typedef enum {
  */
 modem_dce_t *sim800_init(modem_dte_t *dte);
 void sim800_set_default_line_handler(modem_dce_t *dce);
-esp_err_t sim800_at(modem_dce_t *dce, const char *at_command);
+esp_err_t sim800_at(modem_dce_t *dce, const char *at_command,uint8_t timeout);
 
 /**
  * Send an AT command and return -1 if it doesn't return OK.

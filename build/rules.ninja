@@ -1285,7 +1285,7 @@ rule CXX_STATIC_LIBRARY_LINKER____idf_modem
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = C:\espressif\tools\cmake\3.13.4\bin\cmake.exe -SC:\sim800_at_term -Bc:\sim800_at_term\build
+  command = C:\espressif\tools\cmake\3.13.4\bin\cmake.exe -SC:\esp32_at_console -BC:\esp32_at_console\build
   description = Re-running CMake...
   generator = 1
 

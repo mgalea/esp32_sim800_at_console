@@ -15,6 +15,8 @@
 #include "esp_system.h"
 #include "linenoise/linenoise.h"
 #include "argtable3/argtable3.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include "esp_vfs_dev.h"
 #include "esp_vfs_fat.h"
@@ -38,7 +40,7 @@ static const char *TAG = "console";
 
 static void initialize_filesystem()
 {
-    ESP_LOGI(TAG, "Starting  Filing System");
+    ESP_LOGI(TAG, "Starting Filing System");
 
     static wl_handle_t wl_handle;
     const esp_vfs_fat_mount_config_t mount_config = {
@@ -84,6 +86,7 @@ static void initialize_console()
 
     /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
     esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+
     /* Move the caret to the beginning of the next line on '\n' */
     esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
 
@@ -127,7 +130,7 @@ static void initialize_console()
     linenoiseSetHintsCallback((linenoiseHintsCallback *)&esp_console_get_hint);
 
     /* Set command history size */
-    linenoiseHistorySetMaxLen(100);
+    linenoiseHistorySetMaxLen(20);
 
     /* Load command history from filesystem 
     #if CONFIG_STORE_HISTORY
@@ -139,6 +142,7 @@ static void initialize_console()
 
 void app_main()
 {
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector  
 
     initialize_nvs();
 

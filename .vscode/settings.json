@@ -12,6 +12,7 @@
         "cmd_decl.h": "c",
         "linenoise.h": "c",
         "time.h": "c",
-        "argtable3.h": "c"
+        "argtable3.h": "c",
+        "string_view": "c"
     }
 } 

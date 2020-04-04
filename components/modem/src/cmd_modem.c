@@ -76,7 +76,7 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
         xEventGroupSetBits(event_group, STOP_BIT);
         break;
     case MODEM_EVENT_UNKNOWN:
-        ESP_LOGW(TAG, "Unknow line received: %s", (char *)event_data);
+        ESP_LOGW(TAG, "Response received: %s", (char *)event_data);
         break;
     default:
         break;
@@ -126,6 +126,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 
 static int initialize_modem()
 {
+    //
+
     gpio_config_t io_conf;
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (1 << SIM800_PWKEY) + (1 << SIM800_RST) + (1 << SIM800_POWER);
@@ -133,25 +135,17 @@ static int initialize_modem()
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
 
-    set_sim800_pwrsrc();
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    ESP_LOGI(TAG, "Resetting SIM800...");
-    set_sim800_rst();
-    set_sim800_pwkey();
-
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     ESP_LOGI(TAG, "Initializing SIM800...");
-    clear_sim800_pwkey();
-    vTaskDelay(1100 / portTICK_PERIOD_MS);
-    set_sim800_pwkey();
-
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    clear_sim800_rst();
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    set_sim800_pwrsrc();
     set_sim800_rst();
+    clear_sim800_pwkey();
 
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    set_sim800_pwkey();
+    vTaskDelay(1900 / portTICK_PERIOD_MS);
+    
     /* create dte object */
     esp_modem_dte_config_t config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     modem_dte_t *dte = esp_modem_dte_init(&config);
@@ -162,6 +156,9 @@ static int initialize_modem()
     /* create dce object */
 #if CONFIG_EXAMPLE_MODEM_DEVICE_SIM800
     dce = sim800_init(dte);
+
+        if(dce==NULL) goto err;
+
 #elif CONFIG_EXAMPLE_MODEM_DEVICE_BG96
     dce = bg96_init(dte);
 #else
@@ -176,7 +173,9 @@ static int initialize_modem()
     ESP_LOGI(TAG, "IMEI: %s", dce->imei);
     ESP_LOGI(TAG, "IMSI: %s", dce->imsi);
 
-    sim800_set_default_line_handler(dce);
+    return 0;
+err:
+    printf("error regisstering event");
     return 0;
 }
 
@@ -245,9 +244,9 @@ static int at_command(int argc, char **argv)
     }
         if (at_args.suffix->count) {
 
-        ESP_LOGI(TAG, "AT Command %s", at_args.suffix->sval[0]);
+        ESP_LOGI(TAG, "AT%s", at_args.suffix->sval[0]);
         const char *at_command=at_args.suffix->sval[0];
-        sim800_at(dce, at_command);
+        sim800_at(dce, at_command,1);
     }
     return 0;
 }

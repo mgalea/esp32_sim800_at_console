@@ -122,7 +122,7 @@ menu "PPPOS Configuration"
         config EXAMPLE_UART_PATTERN_QUEUE_SIZE
             int "UART Pattern Queue Size"
             range 10 40
-            default 20
+            default 40
             help
                 Length of UART pattern queue.
 

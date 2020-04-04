@@ -1,8 +1,8 @@
-# Install script for directory: C:/sim800_at_term/components/cmd_system
+# Install script for directory: C:/esp32_at_console/components/cmd_system
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/modem_console")
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/modem_terminal")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
