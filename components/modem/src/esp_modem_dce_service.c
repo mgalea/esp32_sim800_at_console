@@ -101,11 +101,12 @@ err:
 esp_err_t esp_modem_dce_define_pdp_context(modem_dce_t *dce, uint32_t cid, const char *type, const char *apn)
 {
     modem_dte_t *dte = dce->dte;
-    char command[64];
-    int len = snprintf(command, sizeof(command), "AT+CGDCONT=%d,\"%s\",\"%s\"\r", cid, type, apn);
+    char command[128];
+    int len = snprintf(command, sizeof(command), "AT+CGDCONT=%d,\"%s\",\"%s\"", cid, type, apn);
+    printf("%s\n",command);
     DCE_CHECK(len < sizeof(command), "command too long: %s", err, command);
     dce->handle_line = esp_modem_dce_handle_response_default;
-    DCE_CHECK(dte->send_cmd(dte, command, MODEM_COMMAND_TIMEOUT_DEFAULT) == ESP_OK, "send command failed", err);
+    DCE_CHECK(dte->send_at(dte, command, MODEM_COMMAND_TIMEOUT_DEFAULT*20) == ESP_OK, "send command failed", err);
     DCE_CHECK(dce->state == MODEM_STATE_SUCCESS, "define pdp context failed", err);
     ESP_LOGD(DCE_TAG, "define pdp context ok");
     return ESP_OK;

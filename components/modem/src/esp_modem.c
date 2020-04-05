@@ -25,7 +25,7 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 
-#define ESP_MODEM_LINE_BUFFER_SIZE (256)
+#define ESP_MODEM_LINE_BUFFER_SIZE (1024)
 #define ESP_MODEM_EVENT_QUEUE_SIZE (32)
 
 #define MIN_PATTERN_INTERVAL (10000)
@@ -168,29 +168,39 @@ static void esp_handle_uart_at_response(esp_modem_dte_t *esp_dte)
     modem_dce_t *dce = esp_dte->parent.dce;
     MODEM_CHECK(dce, "DTE has not yet bind with DCE", err);
     size_t res;
+
+read_uart:
     uart_get_buffered_data_len(esp_dte->uart_port, &res);
     res = MIN(ESP_MODEM_LINE_BUFFER_SIZE, res);
-    res = uart_read_bytes(esp_dte->uart_port, esp_dte->buffer, res, portMAX_DELAY);
-    uint8_t *buffer = esp_dte->buffer;
+    res = uart_read_bytes(esp_dte->uart_port, esp_dte->buffer, res, pdMS_TO_TICKS(100));
     /*
     modem_dce_t *dce = esp_dte->parent.dce;
-    uint8_t *buffer = calloc(20000, sizeof(uint8_t));
+        uint8_t *buffer = calloc(20000, sizeof(uint8_t));
     int res = uart_read_bytes(esp_dte->uart_port, buffer, 20000, pdMS_TO_TICKS(50));
 */
     if (res > 2)
     {
+        xSemaphoreHandle printHandle = xSemaphoreCreateMutex();
         *(esp_dte->buffer + res) = '\0';
+        xSemaphoreTake(printHandle, portMAX_DELAY);
         printf("%s", esp_dte->buffer);
-        if (strncmp((char *)esp_dte->buffer, MODEM_RESULT_CODE_ERROR, res) == 0)
+        xSemaphoreGive(printHandle);
+
+        if (strstr((char *)esp_dte->buffer, MODEM_RESULT_CODE_SUCCESS))
         {
-            dce->state = MODEM_STATE_FAIL;
+            esp_dte->parent.dce->state = MODEM_STATE_SUCCESS;
+            uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
             xSemaphoreGive(dce->atcmdHandle);
         }
-        if (strncmp((char *)esp_dte->buffer, MODEM_RESULT_CODE_SUCCESS, res) == 0)
+        else if (strstr((char *)esp_dte->buffer, MODEM_RESULT_CODE_ERROR))
         {
-
-            dce->state = MODEM_STATE_SUCCESS;
+            esp_dte->parent.dce->state = MODEM_STATE_FAIL;
+            uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
             xSemaphoreGive(dce->atcmdHandle);
+        }
+        else
+        {
+            goto read_uart;
         }
     }
 
@@ -211,7 +221,7 @@ static void uart_event_task_entry(void *param)
     uart_event_t event;
     while (1)
     {
-        if (xQueueReceive(esp_dte->event_queue, &event, pdMS_TO_TICKS(5)))
+        if (xQueueReceive(esp_dte->event_queue, &event, pdMS_TO_TICKS(50)))
         {
             switch (event.type)
             {
@@ -363,10 +373,9 @@ static esp_err_t esp_modem_dte_send_at(modem_dte_t *dte, const char *data, uint3
     // We'd better disable pattern detection here for a moment in case prompt string contains the pattern character
     uart_disable_pattern_det_intr(esp_dte->uart_port);
     MODEM_CHECK(uart_write_bytes(esp_dte->uart_port, data, strlen(data)) >= 0, "uart write bytes failed", err_write);
-    xSemaphoreTake(dce->atcmdHandle, portMAX_DELAY);
-    vTaskDelay(10);
-    uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
+    xSemaphoreTake(dce->atcmdHandle,pdMS_TO_TICKS(2000));
     return ESP_OK;
+
 err_write:
     uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
 err_param:
@@ -447,7 +456,7 @@ static esp_err_t esp_modem_dte_deinit(modem_dte_t *dte)
 
 modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
 {
-    printf("DTE");
+
     esp_err_t res;
     /* malloc memory for esp_dte object */
     esp_modem_dte_t *esp_dte = calloc(1, sizeof(esp_modem_dte_t));
@@ -455,6 +464,7 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
     /* malloc memory to storing lines from modem dce */
     esp_dte->buffer = calloc(1, ESP_MODEM_LINE_BUFFER_SIZE);
     MODEM_CHECK(esp_dte->buffer, "calloc line memory failed", err_line_mem);
+
     /* Set attributes */
     esp_dte->uart_port = config->port_num;
     esp_dte->parent.flow_ctrl = config->flow_control;
@@ -472,19 +482,15 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
         .data_bits = config->data_bits,
         .parity = config->parity,
         .stop_bits = config->stop_bits,
-        .flow_ctrl = (config->flow_control == MODEM_FLOW_CONTROL_HW) ? UART_HW_FLOWCTRL_CTS_RTS : UART_HW_FLOWCTRL_DISABLE};
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE};
+
     MODEM_CHECK(uart_param_config(esp_dte->uart_port, &uart_config) == ESP_OK, "config uart parameter failed", err_uart_config);
-    if (config->flow_control == MODEM_FLOW_CONTROL_HW)
-    {
-        res = uart_set_pin(esp_dte->uart_port, CONFIG_EXAMPLE_UART_MODEM_TX_PIN, CONFIG_EXAMPLE_UART_MODEM_RX_PIN,
-                           CONFIG_EXAMPLE_UART_MODEM_RTS_PIN, CONFIG_EXAMPLE_UART_MODEM_CTS_PIN);
-    }
-    else
-    {
-        res = uart_set_pin(esp_dte->uart_port, CONFIG_EXAMPLE_UART_MODEM_TX_PIN, CONFIG_EXAMPLE_UART_MODEM_RX_PIN,
-                           UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    }
+
+    res = uart_set_pin(esp_dte->uart_port, CONFIG_EXAMPLE_UART_MODEM_TX_PIN, CONFIG_EXAMPLE_UART_MODEM_RX_PIN,
+                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
     MODEM_CHECK(res == ESP_OK, "config uart gpio failed", err_uart_config);
+
     /* Set flow control threshold */
     if (config->flow_control == MODEM_FLOW_CONTROL_HW)
     {
@@ -492,17 +498,20 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
     }
     else if (config->flow_control == MODEM_FLOW_CONTROL_SW)
     {
-        res = uart_set_sw_flow_ctrl(esp_dte->uart_port, true, 8, UART_FIFO_LEN - 8);
+        res = uart_set_sw_flow_ctrl(esp_dte->uart_port, true, 6, UART_FIFO_LEN - 8);
     }
     MODEM_CHECK(res == ESP_OK, "config uart flow control failed", err_uart_config);
+    printf("Install UART...");
     /* Install UART driver and get event queue used inside driver */
-    res = uart_driver_install(esp_dte->uart_port, CONFIG_EXAMPLE_UART_RX_BUFFER_SIZE, CONFIG_EXAMPLE_UART_TX_BUFFER_SIZE,
+    res = uart_driver_install(esp_dte->uart_port, CONFIG_EXAMPLE_UART_RX_BUFFER_SIZE / 2, 0,
                               CONFIG_EXAMPLE_UART_EVENT_QUEUE_SIZE, &(esp_dte->event_queue), 0);
     MODEM_CHECK(res == ESP_OK, "install uart driver failed", err_uart_config);
+    printf("Done.\n");
+
     /* Set pattern interrupt, used to detect the end of a line. */
     res = uart_enable_pattern_det_intr(esp_dte->uart_port, '\n', 1, MIN_PATTERN_INTERVAL, MIN_POST_IDLE, MIN_PRE_IDLE);
     /* Set pattern queue size */
-    res |= uart_pattern_queue_reset(esp_dte->uart_port, CONFIG_EXAMPLE_UART_PATTERN_QUEUE_SIZE * 2);
+    res = uart_pattern_queue_reset(esp_dte->uart_port, CONFIG_EXAMPLE_UART_PATTERN_QUEUE_SIZE * 2);
     MODEM_CHECK(res == ESP_OK, "config uart pattern failed", err_uart_pattern);
     /* Create Event loop */
     esp_event_loop_args_t loop_args = {
@@ -512,6 +521,7 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
     /* Create semaphore */
     esp_dte->process_sem = xSemaphoreCreateBinary();
     MODEM_CHECK(esp_dte->process_sem, "create process semaphore failed", err_sem);
+
     /* Create UART Event task */
     BaseType_t ret = xTaskCreate(uart_event_task_entry,                     //Task Entry
                                  "uart_event",                              //Task Name
@@ -523,7 +533,7 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config)
     MODEM_CHECK(ret == pdTRUE, "create uart event task failed", err_tsk_create);
 
     return &(esp_dte->parent);
-    /* Error handling */
+/* Error handling */
 err_tsk_create:
     vSemaphoreDelete(esp_dte->process_sem);
 err_sem:

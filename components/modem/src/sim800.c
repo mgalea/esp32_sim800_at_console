@@ -177,12 +177,11 @@ esp_err_t sim800_at(modem_dce_t *dce, const char *at_command, uint8_t timeout)
 
     if (timeout == 0)
         timeout++;
-    dce->handle_line = sim800_handle_at_command;
+    dce->handle_line = sim800_handle_response_default;
     //DCE_CHECK(dte->send_wait(dte,send_cmd, 255, "OK\r\n", MODEM_COMMAND_TIMEOUT_DEFAULT) == ESP_OK, "send command failed", err);
     // DCE_CHECK(dte->send_cmd(dte, send_cmd, MODEM_COMMAND_TIMEOUT_DEFAULT) == ESP_OK, "send command failed", err);
     DCE_CHECK(dte->send_at(dte, send_cmd, timeout * 50) == ESP_OK, "send command failed", err);
-    DCE_CHECK(dce->state == MODEM_STATE_SUCCESS, "ERROR response", err);
-    dce->handle_line = sim800_handle_response_default;
+    
     return ESP_OK;
 err:
     return ESP_FAIL;
@@ -788,7 +787,7 @@ modem_dce_t *sim800_init(modem_dte_t *dte)
     /* Bind DTE with DCE */
     sim800_dce->parent.dte = dte;
     dte->dce = &(sim800_dce->parent);
-    printf("DCE");
+
     /* Bind methods */
     sim800_dce->parent.handle_line = sim800_handle_response_default;
     sim800_dce->parent.sync = sim800_sync;
@@ -813,20 +812,23 @@ modem_dce_t *sim800_init(modem_dte_t *dte)
     /* Perform autobauding. */
     /* Sync between DTE and DCE */
 
-    sync_again:
+sync_again:
     vTaskDelay(1);
-    DCE_CHECK(sim800_sync(dte->dce)==ESP_OK,"SYNC fail.",sync_again);
+    DCE_CHECK(sim800_sync(dte->dce) == ESP_OK, "SYNC fail.", sync_again);
 
-     /* Initialize modem. */
+    /* Initialize modem. */
     static const char *const init_strings[] = {
-        "E0;+IPR=0;",
-        "+CMER=0,0,0,1,1;+CMEE=1;+CIURC=0;+CLTS=1;+IFC=0,0;&W0",
+        "E0;+IPR=0",
+        "+CMER=0,0,0,1,1",
+        "+CMEE = 1",
+        "+CLTS=1",
+        "+IFC=0,0;&W0",
         NULL};
 
     for (const char *const *command = init_strings; *command; command++)
     {
-        if(sim800_at(&(sim800_dce->parent), *command,4) == ESP_FAIL)
-            printf("Setup AT commands failed: %s\n",*command);
+        if (sim800_at(&(sim800_dce->parent), *command, 5) == ESP_FAIL)
+            printf("Setup AT commands failed: %s\n", *command);
     }
 
     uint32_t stat = 0, mode = 0;

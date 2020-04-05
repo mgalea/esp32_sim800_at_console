@@ -40,6 +40,7 @@ static void register_start_modem();
 static void register_stop_modem();
 static void register_get_operator();
 static void register_at_command();
+static void register_ppp_command();
 
 void register_modem()
 {
@@ -47,6 +48,7 @@ void register_modem()
     register_stop_modem();
     register_get_operator();
     register_at_command();
+    register_ppp_command();
 }
 
 static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -175,7 +177,7 @@ static int initialize_modem()
 
     return 0;
 err:
-    printf("error regisstering event");
+    printf("error registering event");
     return 0;
 }
 
@@ -285,4 +287,26 @@ void initialize_ppp(modem_dte_t *dte)
     /* Exit PPP mode */
     ESP_ERROR_CHECK(esp_modem_exit_ppp(dte));
     xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+}
+
+static int ppp_start_command(int argc, char **argv)
+{
+    modem_dte_t *dte = dce->dte;
+    /* Power down module */
+    ESP_ERROR_CHECK(dce->power_down(dce));
+    ESP_LOGI(TAG, "Iniitalizing pp session...");
+    initialize_ppp(dte);
+    return 0;
+}
+
+static void register_ppp_command()
+{
+ 
+    const esp_console_cmd_t cmd = {
+        .command = "pppstart",
+        .help = "start the ppp session",
+        .hint = NULL,
+        .func = &ppp_start_command,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }

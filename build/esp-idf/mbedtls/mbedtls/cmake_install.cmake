@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "Debug")
+    set(CMAKE_INSTALL_CONFIG_NAME "")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -34,8 +34,8 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/esp32_at_console/build/esp-idf/mbedtls/mbedtls/library/cmake_install.cmake")
-  include("C:/esp32_at_console/build/esp-idf/mbedtls/mbedtls/include/cmake_install.cmake")
+  include("C:/sim800_at_term/build/esp-idf/mbedtls/mbedtls/library/cmake_install.cmake")
+  include("C:/sim800_at_term/build/esp-idf/mbedtls/mbedtls/include/cmake_install.cmake")
 
 endif()
 
