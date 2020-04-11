@@ -13,6 +13,7 @@
         "linenoise.h": "c",
         "time.h": "c",
         "argtable3.h": "c",
-        "string_view": "c"
+        "string_view": "c",
+        "cstring": "c"
     }
 } 

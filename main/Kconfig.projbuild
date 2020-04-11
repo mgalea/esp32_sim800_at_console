@@ -101,42 +101,42 @@ menu "PPPOS Configuration"
         config EXAMPLE_UART_EVENT_TASK_STACK_SIZE
             int "UART Event Task Stack Size"
             range 2000 6000
-            default 2048
+            default 3096
             help
                 Stack size of UART event task.
 
         config EXAMPLE_UART_EVENT_TASK_PRIORITY
             int "UART Event Task Priority"
             range 3 22
-            default 5
+            default 10
             help
                 Priority of UART event task.
 
         config EXAMPLE_UART_EVENT_QUEUE_SIZE
             int "UART Event Queue Size"
-            range 10 40
-            default 30
+            range 10 300
+            default 250
             help
                 Length of UART event queue.
 
         config EXAMPLE_UART_PATTERN_QUEUE_SIZE
             int "UART Pattern Queue Size"
-            range 10 40
-            default 40
+            range 100 400
+            default 350
             help
                 Length of UART pattern queue.
 
         config EXAMPLE_UART_TX_BUFFER_SIZE
             int "UART TX Buffer Size"
-            range 256 2048
+            range 256 1024
             default 512
             help
                 Buffer size of UART TX buffer.
 
         config EXAMPLE_UART_RX_BUFFER_SIZE
             int "UART RX Buffer Size"
-            range 256 2048
-            default 1024
+            range 256 204800
+            default 4096
             help
                 Buffer size of UART RX buffer.
     endmenu

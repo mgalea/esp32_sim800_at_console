@@ -49,6 +49,7 @@ static inline void strip_cr_lf_tail(char *str, uint32_t len)
     }
 }
 
+
 /**
  * @brief Default handler for response
  * Some responses for command are simple, commonly will return OK when succeed of ERROR when failed

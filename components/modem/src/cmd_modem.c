@@ -1,31 +1,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
-#include "tcpip_adapter.h"
+
 #include "mqtt_client.h"
 #include "esp_modem.h"
 #include "esp_log.h"
 #include "sim800.h"
 #include "bg96.h"
-#include "driver/gpio.h"
 
 #include "esp_console.h"
 #include "argtable3/argtable3.h"
 #include "sdkconfig.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipse.org"
-
-#define SIM800_PWKEY CONFIG_EXAMPLE_UART_MODEM_PWKEY
-#define set_sim800_pwkey() gpio_set_level(SIM800_PWKEY, 1)
-#define clear_sim800_pwkey() gpio_set_level(SIM800_PWKEY, 0)
-
-#define SIM800_RST CONFIG_EXAMPLE_UART_MODEM_RST
-#define set_sim800_rst() gpio_set_level(SIM800_RST, 1)
-#define clear_sim800_rst() gpio_set_level(SIM800_RST, 0)
-
-#define SIM800_POWER 23
-#define set_sim800_pwrsrc() gpio_set_level(SIM800_POWER, 1)
-#define clear_sim800_pwrsrc() gpio_set_level(SIM800_POWER, 0)
 
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
@@ -36,19 +23,19 @@ static const char *TAG = "modem_cmd";
 
 modem_dce_t *dce;
 
-static void register_start_modem();
-static void register_stop_modem();
+static void register_start();
+static void register_stop();
 static void register_get_operator();
 static void register_at_command();
-static void register_ppp_command();
+static void register_cls();
 
-void register_modem()
+void register_modem_commands()
 {
-    register_start_modem();
-    register_stop_modem();
+    register_start();
+    register_stop();
     register_get_operator();
     register_at_command();
-    register_ppp_command();
+    register_cls();
 }
 
 static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -59,7 +46,7 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
         ESP_LOGI(TAG, "Modem PPP Started");
         break;
     case MODEM_EVENT_PPP_CONNECT:
-        ESP_LOGI(TAG, "Modem Connect to PPP Server");
+        ESP_LOGI(TAG, "Modem Connected to PPP Server");
         ppp_client_ip_info_t *ipinfo = (ppp_client_ip_info_t *)(event_data);
         ESP_LOGI(TAG, "~~~~~~~~~~~~~~");
         ESP_LOGI(TAG, "IP          : " IPSTR, IP2STR(&ipinfo->ip));
@@ -126,28 +113,13 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     return ESP_OK;
 }
 
-static int initialize_modem()
+/****************************************************************/
+/** @brief Start/stop modem - Start/stop modem module          */
+
+static int start_modem()
 {
-    //
+    sim800_power_on();
 
-    gpio_config_t io_conf;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (1 << SIM800_PWKEY) + (1 << SIM800_RST) + (1 << SIM800_POWER);
-    io_conf.pull_down_en = 0;
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
-
-
-
-    ESP_LOGI(TAG, "Initializing SIM800...");
-    set_sim800_pwrsrc();
-    set_sim800_rst();
-    clear_sim800_pwkey();
-
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    set_sim800_pwkey();
-    vTaskDelay(1900 / portTICK_PERIOD_MS);
-    
     /* create dte object */
     esp_modem_dte_config_t config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     modem_dte_t *dte = esp_modem_dte_init(&config);
@@ -159,14 +131,13 @@ static int initialize_modem()
 #if CONFIG_EXAMPLE_MODEM_DEVICE_SIM800
     dce = sim800_init(dte);
 
-        if(dce==NULL) goto err;
-
 #elif CONFIG_EXAMPLE_MODEM_DEVICE_BG96
     dce = bg96_init(dte);
 #else
     dce = sim800_init(dte);
-
 #endif
+    if (dce == NULL)
+        goto err;
     ESP_ERROR_CHECK(dce->set_flow_ctrl(dce, MODEM_FLOW_CONTROL_NONE));
     ESP_ERROR_CHECK(dce->store_profile(dce));
 
@@ -177,19 +148,19 @@ static int initialize_modem()
 
     return 0;
 err:
-    printf("error registering event");
+    printf("Error starting modem");
     return 0;
 }
 
-static void register_start_modem()
+/* Power down Modem module and stop the DCE/DTE interface*/
+int stop_modem()
 {
-    const esp_console_cmd_t cmd = {
-        .command = "poweron",
-        .help = "Start and Initialize the modem (DCE)",
-        .hint = "no arguments",
-        .func = &initialize_modem,
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+    modem_dte_t *dte = dce->dte;
+    ESP_ERROR_CHECK(dce->power_down(dce));
+    ESP_ERROR_CHECK(dce->deinit(dce));
+    ESP_ERROR_CHECK(dte->deinit(dte));
+    sim800_power_off();
+    return 0;
 }
 
 static int get_operator()
@@ -209,30 +180,8 @@ static void register_get_operator()
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
 
-int de_initialize_modem()
+static struct
 {
-    modem_dte_t *dte = dce->dte;
-    /* Power down module */
-    ESP_ERROR_CHECK(dce->power_down(dce));
-    ESP_LOGI(TAG, "Power down");
-    ESP_ERROR_CHECK(dce->deinit(dce));
-    ESP_ERROR_CHECK(dte->deinit(dte));
-    clear_sim800_pwrsrc();
-    return 0;
-}
-
-static void register_stop_modem()
-{
-    const esp_console_cmd_t cmd = {
-        .command = "poweroff",
-        .help = "Stop the modem (DCE)",
-        .hint = "no aguments",
-        .func = &de_initialize_modem,
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-}
-
-static struct {
     struct arg_str *suffix;
     struct arg_end *end;
 } at_args;
@@ -240,15 +189,15 @@ static struct {
 static int at_command(int argc, char **argv)
 {
     int nerrors = arg_parse(argc, argv, (void **)&at_args);
-    if (nerrors != 0) {
+    if (nerrors != 0)
+    {
         arg_print_errors(stderr, at_args.end, argv[0]);
         return 1;
     }
-        if (at_args.suffix->count) {
-
-        ESP_LOGI(TAG, "AT%s", at_args.suffix->sval[0]);
-        const char *at_command=at_args.suffix->sval[0];
-        sim800_at(dce, at_command,1);
+    if (at_args.suffix->count)
+    {
+        const char *at_command = at_args.suffix->sval[0];
+        sim800_at(dce, at_command, 3000);
     }
     return 0;
 }
@@ -260,19 +209,56 @@ static void register_at_command()
 
     const esp_console_cmd_t cmd = {
         .command = "AT",
-        .help = "the Hayes modem AT command",
+        .help = "AT command based on the 3GPP standard",
         .hint = "no spaces between commands.",
         .func = &at_command,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
 
-void initialize_ppp(modem_dte_t *dte)
+/****************************************************************/
+/** @brief ppp - enter/exit PPP mode                           */
+
+void init_ppp(modem_dce_t *dce)
 {
-    tcpip_adapter_init();
-    event_group = xEventGroupCreate();
+    modem_dte_t *dte = dce->dte;
+    
+    if (!event_group)
+        event_group = xEventGroupCreate();
 
     esp_modem_setup_ppp(dte);
+}
+
+/* Exit PPP mode */
+void de_init_ppp(modem_dce_t *dce)
+{
+    modem_dte_t *dte = dce->dte;
+    ESP_ERROR_CHECK(esp_modem_exit_ppp(dte));
+    xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+}
+
+/****************************************************************/
+/** @brief CLS - Clear Screen Command                          */
+static int cls()
+{
+    printf("\033[2J\n\n\033[H\n");
+    return 0;
+}
+
+static void register_cls()
+{
+    const esp_console_cmd_t cmd = {
+        .command = "cls",
+        .help = "Clear screen",
+        .hint = "no arguments",
+        .func = &cls,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+void start_mqtt_connection()
+{
+
     /* Wait for IP address */
     xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
     /* Config MQTT */
@@ -282,31 +268,132 @@ void initialize_ppp(modem_dte_t *dte)
     };
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_start(mqtt_client);
+
     xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
     esp_mqtt_client_destroy(mqtt_client);
-    /* Exit PPP mode */
-    ESP_ERROR_CHECK(esp_modem_exit_ppp(dte));
-    xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
 }
 
-static int ppp_start_command(int argc, char **argv)
+void start_life()
 {
-    modem_dte_t *dte = dce->dte;
-    /* Power down module */
-    ESP_ERROR_CHECK(dce->power_down(dce));
-    ESP_LOGI(TAG, "Iniitalizing pp session...");
-    initialize_ppp(dte);
+    printf(
+        "                                                                                            `-----\n"
+        "                    -:---------`                                                      .-----.     \n"
+        "              `-----`         `-:::---:                                      `--------`           \n"
+        "          `-:-.         `              /---`                       `----:----.                    \n"
+        "  `.-------           ` ..          -  .  `-:-                `-::--`    `-..`                    \n"
+        "---`              `-.`-:-/:      `o+--+.o-:: -:    .-:-:------.        `..   ``                   \n"
+        "                `.. .:.   `::::-.  :o:-+-+ .s:`o //--:://---  `:.    ..  `-::--://::-..           \n"
+        "                  `/-           `-:: `/+-/: +`--- .-`      -y::`...    .:`------.``````           \n"
+        "                .::                `+/:+../:.:           /// .-/-::.-::.:--     `..--...----::----\n"
+        "            `:::`                   -...  .:-`           //:/+-`o`.:-::-                          \n"
+        "          :/-                                             / / .:+ +`                              \n"
+        "       `::`                                               +`/`/ +`+                               \n"
+        "  `-:::.                                                  --/-` `-                                \n"
+        "--.`                                                                                              \n");
+}
+
+/****************************************************************/
+/** @brief start - start something                             */
+
+static struct
+{
+    struct arg_str *suffix;
+    struct arg_end *end;
+} start_args;
+
+static int start_command(int argc, char **argv)
+{
+    int nerrors = arg_parse(argc, argv, (void **)&start_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, start_args.end, argv[0]);
+        return 1;
+    }
+    if (start_args.suffix->count)
+    {
+
+        if (strstr(start_args.suffix->sval[0], "modem"))
+        {
+            start_modem();
+        }
+
+        if (strstr(start_args.suffix->sval[0], "ppp"))
+        {
+            init_ppp(dce);
+        }
+
+        if (strstr(start_args.suffix->sval[0], "mqtt"))
+        {
+            start_mqtt_connection();
+        }
+
+        if (strstr(start_args.suffix->sval[0], "life"))
+        {
+            start_life();
+        }
+    }
     return 0;
 }
 
-static void register_ppp_command()
+static void register_start()
 {
- 
+    start_args.suffix = arg_str1(NULL, NULL, "<command>", "modem command");
+    start_args.end = arg_end(2);
     const esp_console_cmd_t cmd = {
-        .command = "pppstart",
-        .help = "start the ppp session",
-        .hint = NULL,
-        .func = &ppp_start_command,
+        .command = "start",
+        .help = "Start or stop the Something (DCE)",
+        .hint = "[modem|ppp]",
+        .func = &start_command,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+/****************************************************************/
+/** @brief stop - stop something                               */
+static struct
+{
+    struct arg_str *suffix;
+    struct arg_end *end;
+} stop_args;
+
+static int stop_command(int argc, char **argv)
+{
+    int nerrors = arg_parse(argc, argv, (void **)&stop_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, stop_args.end, argv[0]);
+        return 1;
+    }
+    if (stop_args.suffix->count)
+    {
+        if (strstr(stop_args.suffix->sval[0], "modem"))
+        {
+            stop_modem();
+        }
+
+        if (strstr(stop_args.suffix->sval[0], "ppp"))
+        {
+            de_init_ppp(dce);
+        }
+    }
+    return 0;
+}
+
+static void register_stop()
+{
+    stop_args.suffix = arg_str1(NULL, NULL, "<command>", "modem command");
+    stop_args.end = arg_end(2);
+    const esp_console_cmd_t cmd = {
+        .command = "stop",
+        .help = "Start or stop the Something (DCE)",
+        .hint = "[modem|ppp]",
+        .func = &stop_command,
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+void console_send_raw(const char *line)
+{
+    sim800_send_raw(dce, line, 3000);
 }

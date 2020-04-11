@@ -20,7 +20,6 @@ extern "C" {
 #include "esp_modem_dce_service.h"
 #include "esp_modem.h"
 
-
 typedef enum {
     MODEM_DISCONNECTED=0, /*!< In processing */
     MODEM_CONNECTED,    
@@ -40,34 +39,10 @@ typedef enum {
  */
 modem_dce_t *sim800_init(modem_dte_t *dte);
 void sim800_set_default_line_handler(modem_dce_t *dce);
-esp_err_t sim800_at(modem_dce_t *dce, const char *at_command,uint8_t timeout);
-
-/**
- * Send an AT command and return -1 if it doesn't return OK.
- */
-#define at_command_simple(at, cmd...)                                       \
-    do {                                                                    \
-        const char *_response = at_command(at, cmd);                        \
-        if (!_response)                                                     \
-            return -1; /* timeout */                                        \
-        if (strcmp(_response, "")) {                                        \
-            return -1;                                                      \
-        }                                                                   \
-    } while (0)
-
-/**
- * Send raw data and return -1 if it doesn't return OK.
- */
-#define at_command_raw_simple(at, cmd...)                                   \
-    do {                                                                    \
-        const char *_response = at_command_raw(at, cmd);                    \
-        if (!_response)                                                     \
-            return -1; /* timeout */                                        \
-        if (strcmp(_response, "")) {                                        \
-            return -1;                                                      \
-        }                                                                   \
-    } while (0)
-
+esp_err_t sim800_at(modem_dce_t *dce, const char *at_command,uint16_t timeout);
+esp_err_t sim800_send_raw(modem_dce_t *dce, const char *line, uint16_t timeout);
+void sim800_power_on();
+void sim800_power_off();
 
 #define _NUMARGS(...) (sizeof((void *[]){0, ##__VA_ARGS__})/sizeof(void *)-1)
 
@@ -82,7 +57,3 @@ esp_err_t sim800_at(modem_dce_t *dce, const char *at_command,uint8_t timeout);
             return -1;                                                      \
         }                                                                   \
     } while (0)
-
-#ifdef __cplusplus
-}
-#endif

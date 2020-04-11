@@ -13,8 +13,8 @@ extern "C" {
 #endif
 
 // Register system functions
-void register_modem();
-
+void register_modem_commands();
+void console_send_raw(const char *line);
 #ifdef __cplusplus
 }
 #endif

@@ -17,7 +17,7 @@
 #include "argtable3/argtable3.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
-
+#include "tcpip_adapter.h"
 #include "esp_vfs_dev.h"
 #include "esp_vfs_fat.h"
 #include "nvs.h"
@@ -28,6 +28,22 @@
 #include "sdkconfig.h"
 
 static const char *TAG = "console";
+
+#define ESC_SEQ(command) "\033["command"m"
+#define COLOR(COLOR) ESC_SEQ("38;5;"COLOR)
+#define GREY "243"
+#define GREEN "28"
+#define RED "124"
+#define TEAL "29"
+#define ORANGE "208"
+
+#define BRIGHT_GREEN "46"
+#define RESET_COLOR ESC_SEQ("0")
+#define DIM_COLOR  COLOR(GREY)
+#define BOLD ESC_SEQ("1")
+
+#define CLS "\n\033[2J\n\033[H\n"
+#define FRAMED ESC_SEQ("53")
 
 /* Console command history can be stored to and loaded from a file.
  * The easiest way to do this is to use FATFS filesystem on top of
@@ -83,6 +99,8 @@ static void initialize_console()
 {
     /* Disable buffering on stdin */
     setvbuf(stdin, NULL, _IONBF, 0);
+    /* Disable buffering on stdout */
+    // setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
     esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
@@ -142,8 +160,9 @@ static void initialize_console()
 
 void app_main()
 {
-    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector  
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
+tcpip_adapter_init();
     initialize_nvs();
 
 #if CONFIG_STORE_HISTORY
@@ -155,27 +174,28 @@ void app_main()
     esp_console_register_help_command();
     register_system();
     //register_wifi();
-    register_modem();
+    register_modem_commands();
 
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
      */
     const char *prompt = LOG_COLOR_I "> " LOG_RESET_COLOR;
 
-    printf("\n"
-           "ESP32 to GPRS Modem Command Terminal.\n"
-           "Type 'help' to get the list of commands.\n"
-           "Use UP/DOWN arrows to navigate through command history.\n"
-           "Press TAB when typing command name to auto-complete.\n");
+        printf("\n\n\n" CLS "\n\n\n" CLS 
+           COLOR(BRIGHT_GREEN) BOLD FRAMED "GPRS Modem Command Terminal.\n" RESET_COLOR
+           COLOR(ORANGE) "RANDOM SYSTEMS CORP. ALL RIGHTS RESERVED\n" RESET_COLOR
+           "Type 'help' to get the list of commands.\n" RESET_COLOR
+           "Use UP/DOWN arrows to navigate through command history.\n" RESET_COLOR
+           "Press TAB when typing command name to auto-complete.\n" RESET_COLOR);
 
     /* Figure out if the terminal supports escape sequences */
     int probe_status = linenoiseProbe();
     if (probe_status)
     { /* zero indicates success */
-        printf("\n"
+        printf("\n" DIM_COLOR 
                "Your terminal application does not support escape sequences.\n"
                "Line editing and history features are disabled.\n"
-               "On Windows, try using Putty instead.\n");
+               "On Windows, try using Putty instead.\n"RESET_COLOR);
         linenoiseSetDumbMode(1);
 #if CONFIG_LOG_COLORS
         /* Since the terminal doesn't support escape sequences,
@@ -199,11 +219,6 @@ void app_main()
         /* Add the command to the history */
         linenoiseHistoryAdd(line);
 
-        if (strncmp(line, "AT", 2)==0 && strncmp(line, "AT ", 3)!=0)
-        {
-            insertString(line, 2, " ");
-        }
-
 #if CONFIG_STORE_HISTORY
         /* Save command history to filesystem */
         linenoiseHistorySave(HISTORY_PATH);
@@ -215,7 +230,7 @@ void app_main()
         esp_err_t err = esp_console_run(line, &ret);
         if (err == ESP_ERR_NOT_FOUND)
         {
-            printf("Unrecognized command\n");
+            console_send_raw(line);
         }
         else if (err == ESP_ERR_INVALID_ARG)
         {
