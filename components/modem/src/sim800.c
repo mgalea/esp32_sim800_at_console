@@ -178,7 +178,7 @@ static esp_err_t sim800_print_buffer(modem_dce_t *dce, const char *buffer)
 {
     esp_err_t err = ESP_OK;
 
-    printf("\033[1m;\033[38;5;201m%s\033[0m", buffer);
+    printf("\033[1m\033[38;5;201m%s\033[0m", buffer);
 
     return err;
 }
@@ -828,6 +828,7 @@ modem_dce_t *sim800_init(modem_dte_t *dte)
     sim800_dce->parent.power_down = sim800_power_down;
     sim800_dce->parent.deinit = sim800_deinit;
     sim800_dce->parent.handle_line_default = sim800_handle_response_default;
+    
 sync:
     /* Sync between DTE and DCE */
     vTaskDelay(500);
@@ -867,13 +868,14 @@ sync:
     /* Get IMEI number */
     DCE_CHECK(sim800_get_imei_number(sim800_dce) == ESP_OK, "get imei failed", err_io);
     /* Get IMSI number */
-    DCE_CHECK(sim800_get_imsi_number(sim800_dce) == ESP_OK, "get imsi failed", err_io);
+    DCE_CHECK(sim800_get_imsi_number(sim800_dce) == ESP_OK, "get imsi failed. Check SIM Card.", err_io);
     /* Get operator name */
     DCE_CHECK(sim800_get_operator_name(sim800_dce) == ESP_OK, "get operator name failed", err_io);
 
     return &(sim800_dce->parent);
 err_io:
     free(sim800_dce);
+    
 err:
     return NULL;
 }

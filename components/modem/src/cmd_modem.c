@@ -1,7 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
-
 #include "mqtt_client.h"
 #include "esp_modem.h"
 #include "esp_log.h"
@@ -21,7 +20,8 @@ static const int GOT_DATA_BIT = BIT2;
 
 static const char *TAG = "modem_cmd";
 
-modem_dce_t *dce;
+modem_dce_t *dce = NULL;
+modem_dte_t *dte = NULL;
 
 static void register_start();
 static void register_stop();
@@ -45,6 +45,7 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
     case MODEM_EVENT_PPP_START:
         ESP_LOGI(TAG, "Modem PPP Started");
         break;
+
     case MODEM_EVENT_PPP_CONNECT:
         ESP_LOGI(TAG, "Modem Connected to PPP Server");
         ppp_client_ip_info_t *ipinfo = (ppp_client_ip_info_t *)(event_data);
@@ -57,16 +58,22 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
         ESP_LOGI(TAG, "~~~~~~~~~~~~~~");
         xEventGroupSetBits(event_group, CONNECT_BIT);
         break;
+
     case MODEM_EVENT_PPP_DISCONNECT:
         ESP_LOGI(TAG, "Modem Disconnect from PPP Server");
+        xEventGroupClearBits(event_group, CONNECT_BIT);
         break;
+
     case MODEM_EVENT_PPP_STOP:
         ESP_LOGI(TAG, "Modem PPP Stopped");
+        xEventGroupClearBits(event_group, CONNECT_BIT);
         xEventGroupSetBits(event_group, STOP_BIT);
         break;
+
     case MODEM_EVENT_UNKNOWN:
         ESP_LOGW(TAG, "Response received: %s", (char *)event_data);
         break;
+
     default:
         break;
     }
@@ -122,11 +129,14 @@ static int start_modem()
 
     /* create dte object */
     esp_modem_dte_config_t config = ESP_MODEM_DTE_DEFAULT_CONFIG();
-    modem_dte_t *dte = esp_modem_dte_init(&config);
+    dte = esp_modem_dte_init(&config);
 
+    printf("data terminal read");
+   
     /* Register event handler */
     ESP_ERROR_CHECK(esp_modem_add_event_handler(dte, modem_event_handler, NULL));
 
+   
     /* create dce object */
 #if CONFIG_EXAMPLE_MODEM_DEVICE_SIM800
     dce = sim800_init(dte);
@@ -138,6 +148,7 @@ static int start_modem()
 #endif
     if (dce == NULL)
         goto err;
+    return 0;
     ESP_ERROR_CHECK(dce->set_flow_ctrl(dce, MODEM_FLOW_CONTROL_NONE));
     ESP_ERROR_CHECK(dce->store_profile(dce));
 
@@ -148,6 +159,10 @@ static int start_modem()
 
     return 0;
 err:
+    esp_modem_remove_event_handler(dte, modem_event_handler);
+    esp_modem_dte_deinit(dte);
+    dce = NULL;
+    dte = NULL;
     printf("Error starting modem");
     return 0;
 }
@@ -155,10 +170,22 @@ err:
 /* Power down Modem module and stop the DCE/DTE interface*/
 int stop_modem()
 {
-    modem_dte_t *dte = dce->dte;
-    ESP_ERROR_CHECK(dce->power_down(dce));
-    ESP_ERROR_CHECK(dce->deinit(dce));
-    ESP_ERROR_CHECK(dte->deinit(dte));
+
+
+    if (dce != NULL)
+    {
+        modem_dte_t *dte = dce->dte;
+        ESP_ERROR_CHECK(dce->power_down(dce));
+        ESP_ERROR_CHECK(dce->deinit(dce));
+        dce = NULL;
+    }
+
+    if (dte != NULL)
+    {
+        ESP_ERROR_CHECK(dte->deinit(dte));
+        dte = NULL;
+    }
+
     sim800_power_off();
     return 0;
 }
@@ -222,7 +249,7 @@ static void register_at_command()
 void init_ppp(modem_dce_t *dce)
 {
     modem_dte_t *dte = dce->dte;
-    
+
     if (!event_group)
         event_group = xEventGroupCreate();
 
@@ -292,6 +319,20 @@ void start_life()
         "--.`                                                                                              \n");
 }
 
+static int start_test()
+{
+    for (int x = 0; x < 10; x++)
+    {
+        printf("%d: Pre start: %d\n", x, esp_get_free_heap_size());
+        start_modem();
+
+        printf("%d: started: %d\n", x, esp_get_free_heap_size());
+        stop_modem();
+        printf("----------------------------\n");
+    }
+    return 0;
+}
+
 /****************************************************************/
 /** @brief start - start something                             */
 
@@ -330,6 +371,11 @@ static int start_command(int argc, char **argv)
         if (strstr(start_args.suffix->sval[0], "life"))
         {
             start_life();
+        }
+
+        if (strstr(start_args.suffix->sval[0], "test"))
+        {
+            start_test();
         }
     }
     return 0;

@@ -1,4 +1,4 @@
-# Install script for directory: C:/esp-idf-4-0/components/soc
+# Install script for directory: C:/esp-idf-4-r/esp-idf/components/soc
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

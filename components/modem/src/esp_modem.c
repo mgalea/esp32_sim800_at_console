@@ -55,9 +55,9 @@ static const char *MODEM_TAG = "esp-modem";
  */
 static inline char *strip_cr_lf_head(char *str)
 {
-    if (!strncmp("\r\n",str,2))
+    if (!strncmp("\r\n", str, 2))
     {
-        str = (str+2);
+        str = (str + 2);
     }
     return str;
 }
@@ -93,8 +93,9 @@ static esp_err_t esp_dte_handle_line(esp_modem_dte_t *esp_dte)
 {
     modem_dce_t *dce = esp_dte->parent.dce;
     MODEM_CHECK(dce, "DTE has not yet bind with DCE", err);
-    char *line = strip_cr_lf_head((char *)(esp_dte->buffer));;
-    
+    char *line = strip_cr_lf_head((char *)(esp_dte->buffer));
+    ;
+
     /* Skip pure "\r\n" lines */
     if (strlen(line) > 2)
     {
@@ -260,10 +261,7 @@ static esp_err_t esp_modem_dte_send_cmd(modem_dte_t *dte, const char *command, u
     while (dce->state == MODEM_STATE_PROCESSING)
     {
         xSemaphoreTake(esp_dte->process_sem, pdMS_TO_TICKS(1000));
-
     }
-
-    
 
     ret = ESP_OK;
 err:
@@ -367,7 +365,7 @@ static esp_err_t esp_modem_dte_process_cmd_done(modem_dte_t *dte)
 {
     esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
     modem_dce_t *dce = dte->dce;
-    dce->handle_line=dce->handle_line_default;
+    dce->handle_line = dce->handle_line_default;
     return xSemaphoreGive(esp_dte->process_sem) == pdTRUE ? ESP_OK : ESP_FAIL;
 }
 
@@ -379,7 +377,7 @@ static esp_err_t esp_modem_dte_process_cmd_done(modem_dte_t *dte)
  *      - ESP_OK on success
  *      - ESP_FAIL on error
  */
-static esp_err_t esp_modem_dte_deinit(modem_dte_t *dte)
+esp_err_t esp_modem_dte_deinit(modem_dte_t *dte)
 {
     esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
     /* Delete UART event task */
@@ -397,6 +395,7 @@ static esp_err_t esp_modem_dte_deinit(modem_dte_t *dte)
         dte->dce->dte = NULL;
     }
     free(esp_dte);
+    esp_dte = NULL;
     return ESP_OK;
 }
 
@@ -548,6 +547,7 @@ static void on_ppp_status_changed(ppp_pcb *pcb, int err_code, void *ctx)
     case PPPERR_ALLOC:
         ESP_LOGE(MODEM_TAG, "Unable to allocate resources");
         break;
+
     case PPPERR_USER: /* User interrupt */
         esp_event_post_to(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, MODEM_EVENT_PPP_STOP, NULL, 0, 0);
         /* Free the PPP control block */

@@ -32,7 +32,10 @@ ESP_EVENT_DECLARE_BASE(ESP_MODEM_EVENT);
  * @brief ESP Modem Event
  *
  */
-typedef enum {
+typedef enum
+{
+    MODEM_EVENT_START,          /*!< ESP Modem Start */
+    MODEM_EVENT_STOP,           /*!< ESP Modem Stop */
     MODEM_EVENT_PPP_START,      /*!< ESP Modem Start PPP Session */
     MODEM_EVENT_PPP_CONNECT,    /*!< ESP Modem Connect to PPP Server */
     MODEM_EVENT_PPP_DISCONNECT, /*!< ESP Modem Disconnect from PPP Server */
@@ -70,13 +73,22 @@ typedef struct {
 /**
  * @brief Create and initialize Modem DTE object
  *
- * @param config configuration of ESP Modem DTE object
+ * @param dte ESP Modem DTE object
  * @return modem_dte_t*
  *      - Modem DTE object
  */
 modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config);
 
 /**
+ * @brief Deinitialize Modem DTE object
+ *
+ * @param config configuration of ESP Modem DTE object
+ * @return modem_dte_t*
+ *      - Modem DTE object
+ */
+esp_err_t esp_modem_dte_deinit(modem_dte_t *dte);
+
+    /**
  * @brief Register event handler for ESP Modem event loop
  *
  * @param dte modem_dte_t type object
@@ -87,7 +99,7 @@ modem_dte_t *esp_modem_dte_init(const esp_modem_dte_config_t *config);
  *      - ESP_ERR_NO_MEM on allocating memory for the handler failed
  *      - ESP_ERR_INVALID_ARG on invalid combination of event base and event id
  */
-esp_err_t esp_modem_add_event_handler(modem_dte_t *dte, esp_event_handler_t handler, void *handler_args);
+    esp_err_t esp_modem_add_event_handler(modem_dte_t *dte, esp_event_handler_t handler, void *handler_args);
 
 /**
  * @brief Unregister event handler for ESP Modem event loop
